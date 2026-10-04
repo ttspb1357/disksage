@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="ds-token" content="{{ token }}">
+  <title>DiskSage</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233d5af1'/><path d='M9 21a7 7 0 1 1 14 0' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/><path d='M16 21l4-6' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M9 21a7 7 0 1 1 14 0" /><path d="M16 21l4-6" /></svg>
+      <div>
+        <h1>DiskSage</h1>
+        <p>Finds the junk on your PC — explained by an AI that never leaves it.</p>
+      </div>
+    </div>
+    <div class="badges">
+      <span class="badge badge-local" title="The AI runs on this computer through Ollama. Nothing is uploaded.">🔒 100% local</span>
+      <span class="badge" id="modelBadge" title="Open-weight model running in Ollama">{{ model }}</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" role="tab" data-tab="clean">Clean up</button>
+    <button class="tab" role="tab" data-tab="apps">Remove an app</button>
+    <button class="tab" role="tab" data-tab="ask">Ask DiskSage</button>
+  </nav>
+
+  <main>
+    <!-- Clean up -->
+    <section id="tab-clean" class="tabpanel">
+      <div id="ollamaWarning" class="notice warn" hidden></div>
+      <div id="drives" class="drives"></div>
+
+      <div id="scanIntro" class="card hero">
+        <h2>Let's see where your space went</h2>
+        <p>
+          DiskSage checks your Downloads, temp files, browser and app caches, old project folders,
+          AI models, driver leftovers and more. It only <strong>looks</strong> — nothing is removed
+          until you pick it and confirm.
+        </p>
+        <button id="scanBtn" class="btn primary big">Scan my PC</button>
+      </div>
+
+      <div id="progress" class="card" hidden>
+        <div class="progress-head">
+          <div class="spinner"></div>
+          <div>
+            <h2 id="progressStep">Starting…</h2>
+            <p class="muted">Only reading — nothing is changed.</p>
+          </div>
+        </div>
+        <div class="bar"><div id="progressBar" class="bar-fill"></div></div>
+        <ol id="progressSteps" class="steps"></ol>
+      </div>
+
+      <div id="results" hidden>
+        <div id="cleanResult" class="card result-card" hidden></div>
+
+        <div class="card summary">
+          <div class="totals">
+            <div class="total total-safe">
+              <span class="num" id="safeTotal">–</span>
+              <span class="lbl">safe to clean</span>
+            </div>
+            <div class="total total-review">
+              <span class="num" id="reviewTotal">–</span>
+              <span class="lbl">worth a look</span>
+            </div>
+          </div>
+          <div id="aiSummary" class="ai-summary"></div>
+          <ul id="scanNotes" class="scan-notes"></ul>
+          <div class="summary-actions">
+            <button id="selectSafeBtn" class="btn">Select everything safe</button>
+            <button id="rescanBtn" class="btn ghost">Scan again</button>
+          </div>
+        </div>
+
+        <div id="groups"></div>
+      </div>
+    </section>
+
+    <!-- Remove an app -->
+    <section id="tab-apps" class="tabpanel" hidden>
+      <div class="apps-layout">
+        <div class="card apps-list-card">
+          <input id="appSearch" type="search" placeholder="Search installed apps…" autocomplete="off">
+          <div id="appsList" class="apps-list"><p class="muted pad">Loading your apps…</p></div>
+        </div>
+        <div id="appDetail" class="card app-detail">
+          <div class="empty">
+            <h2>Remove an app completely</h2>
+            <p class="muted">
+              Pick an app. DiskSage runs its official uninstaller, then finds the settings, caches and
+              data folders it leaves behind — and the local AI explains what each one is.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ask -->
+    <section id="tab-ask" class="tabpanel" hidden>
+      <div class="card chat">
+        <div id="chatLog" class="chat-log">
+          <div class="msg assistant">
+            <div class="bubble">
+              Hi! Ask me anything about your disk space — what a folder is, whether something is safe to
+              delete, or how to fully remove an app. If you've run a scan, I'll use what it found on this PC.
+            </div>
+          </div>
+        </div>
+        <div id="chatSuggestions" class="chips"></div>
+        <form id="chatForm" class="chat-form">
+          <textarea id="chatInput" rows="2" placeholder="e.g. Is it safe to delete the WinSxS folder?"></textarea>
+          <button class="btn primary" type="submit" id="chatSend">Ask</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="actionBar" class="action-bar" hidden>
+    <div>
+      <strong id="selectionSize">0 B</strong>
+      <span id="selectionCount" class="muted"></span>
+    </div>
+    <div class="action-bar-buttons">
+      <button id="clearSelBtn" class="btn ghost">Clear</button>
+      <button id="cleanBtn" class="btn danger">Clean up selected</button>
+    </div>
+  </div>
+
+  <dialog id="confirmDialog">
+    <h3>Ready to clean up?</h3>
+    <div id="confirmBody"></div>
+    <div class="dialog-actions">
+      <button id="confirmCancel" class="btn ghost">Cancel</button>
+      <button id="confirmOk" class="btn danger">Clean up</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <footer>
+    Runs on your machine with an open-weight model through Ollama · file names and paths never leave this PC.
+    <br><button id="privacyBtn" class="linklike" type="button">Blur file names (for screenshots)</button>
+  </footer>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
