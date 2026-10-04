@@ -18,8 +18,13 @@ class Item:
     mtime: float = 0.0
     note: str = ""
     ai_note: str = ""
+    ai_verdict: str = ""
     removed: bool = False
     meta: dict = field(default_factory=dict)
+
+    @property
+    def blocked(self):
+        return self.meta.get("blocked")
 
 
 @dataclass
@@ -43,6 +48,12 @@ class Finding:
         return sum(i.size for i in self.items if not i.removed)
 
     @property
+    def cleanable_size(self):
+        if self.action not in CLEANABLE_ACTIONS:
+            return 0
+        return sum(i.size for i in self.items if not i.removed and not i.blocked)
+
+    @property
     def final_verdict(self):
         # The model may make a verdict more cautious, never less.
         v = self.verdict
@@ -64,6 +75,7 @@ class Finding:
             "ai_reason": self.ai_reason,
             "action": self.action,
             "size": self.size,
+            "cleanable_size": self.cleanable_size,
             "count": len(live),
             "total_items": len(self.items),
             "items": [
@@ -74,6 +86,8 @@ class Finding:
                     "age_days": int((now - i.mtime) // DAY) if i.mtime else None,
                     "note": i.note,
                     "ai_note": i.ai_note,
+                    "ai_verdict": i.ai_verdict,
+                    "blocked": i.blocked,
                     "removed": i.removed,
                 }
                 for idx, i in enumerate(self.items[:MAX_ITEMS_SENT])

@@ -10,9 +10,12 @@ names and paths are only ever sent to 127.0.0.1.
 import os
 import secrets
 import shutil
+import socket
+import sys
 import threading
 import webbrowser
 
+import requests
 from flask import Flask, abort, jsonify, render_template, request
 
 from cleaner import actions, installed, llm, winapi
@@ -186,9 +189,38 @@ def ask():
     return jsonify({"answer": answer})
 
 
+def _port_busy(port):
+    with socket.socket() as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _disksage_on(port):
+    try:
+        return "<title>DiskSage</title>" in requests.get(f"http://127.0.0.1:{port}/", timeout=2).text
+    except requests.RequestException:
+        return False
+
+
 if __name__ == "__main__":
+    open_browser = not os.environ.get("DISKSAGE_NO_BROWSER")
+    if _port_busy(PORT):
+        if _disksage_on(PORT):
+            print(f"\n  DiskSage is already running — opening http://127.0.0.1:{PORT}\n")
+            if open_browser:
+                webbrowser.open(f"http://127.0.0.1:{PORT}")
+            sys.exit(0)
+        PORT = next(p for p in range(PORT + 1, PORT + 50) if not _port_busy(p))
+
     url = f"http://127.0.0.1:{PORT}"
-    print(f"\n  DiskSage is running at {url}  (model: {llm.MODEL})\n  Press Ctrl+C to stop.\n")
-    if not os.environ.get("DISKSAGE_NO_BROWSER"):
+    models = llm.list_models()
+    if models is None:
+        hint = "Ollama isn't running — start the Ollama app for AI explanations."
+    elif not any(m.get("name") == llm.MODEL for m in models):
+        hint = f"The AI model isn't downloaded yet — run:  ollama pull {llm.MODEL}"
+    else:
+        hint = f"Local AI ready: {llm.MODEL}"
+    print(f"\n  DiskSage is running at {url}\n  {hint}\n  Keep this window open while you use it; close it (or press Ctrl+C) to stop.\n")
+    if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="127.0.0.1", port=PORT, debug=False, threaded=True)

@@ -2,7 +2,9 @@
 
 import ctypes
 import os
+import re
 import uuid
+import winreg
 from ctypes import wintypes
 
 shell32 = ctypes.WinDLL("shell32")
@@ -46,6 +48,10 @@ kernel32.GetDriveTypeW.argtypes = [wintypes.LPCWSTR]
 kernel32.GetDriveTypeW.restype = wintypes.UINT
 kernel32.GetLongPathNameW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
 kernel32.GetLongPathNameW.restype = wintypes.DWORD
+kernel32.GetLogicalDrives.argtypes = []
+kernel32.GetLogicalDrives.restype = wintypes.DWORD
+kernel32.GetVolumeNameForVolumeMountPointW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+kernel32.GetVolumeNameForVolumeMountPointW.restype = wintypes.BOOL
 version.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.DWORD)]
 version.GetFileVersionInfoSizeW.restype = wintypes.DWORD
 version.GetFileVersionInfoW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
@@ -85,7 +91,42 @@ def long_path(path):
 
 
 def fixed_drives():
-    return [d for d in os.listdrives() if kernel32.GetDriveTypeW(d) == 3]  # DRIVE_FIXED
+    mask = kernel32.GetLogicalDrives()
+    letters = [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+    return [d for d in letters if kernel32.GetDriveTypeW(d) == 3]  # DRIVE_FIXED
+
+
+def _reg_dword(hive, key, name):
+    try:
+        with winreg.OpenKey(hive, key) as k:
+            value = winreg.QueryValueEx(k, name)[0]
+            return value if isinstance(value, int) else None
+    except OSError:
+        return None
+
+
+def recycle_bin_limit(path):
+    """(enabled, max bytes or None if unknown) for the Recycle Bin on path's drive.
+
+    Windows silently deletes for good anything bigger than this limit, and everything
+    when the bin is switched off — so DiskSage checks before promising "restorable".
+    """
+    policy = r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+    if 1 in (_reg_dword(winreg.HKEY_CURRENT_USER, policy, "NoRecycleFiles"),
+             _reg_dword(winreg.HKEY_LOCAL_MACHINE, policy, "NoRecycleFiles")):
+        return False, 0
+    root = os.path.splitdrive(os.path.abspath(path))[0] + "\\"
+    buf = ctypes.create_unicode_buffer(64)
+    if not kernel32.GetVolumeNameForVolumeMountPointW(root, buf, len(buf)):
+        return True, None
+    match = re.search(r"\{[0-9A-Fa-f-]+\}", buf.value)
+    if not match:
+        return True, None
+    key = rf"Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume\{match.group(0)}"
+    if _reg_dword(winreg.HKEY_CURRENT_USER, key, "NukeOnDelete") == 1:
+        return False, 0
+    capacity_mb = _reg_dword(winreg.HKEY_CURRENT_USER, key, "MaxCapacity")
+    return True, capacity_mb * 1024 * 1024 if capacity_mb else None
 
 
 def recycle_bin_info():

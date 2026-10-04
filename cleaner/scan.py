@@ -20,6 +20,7 @@ STEPS = [
     ("Sizing up old project dependencies", detectors.scan_projects),
     ("Checking AI model downloads", detectors.scan_ai_models),
     ("Checking driver and Windows leftovers", detectors.scan_system),
+    ("Looking for app data nothing claims", detectors.scan_unrecognized_appdata),
     ("Listing your biggest files", detectors.scan_large_files),
     ("Checking the Recycle Bin", detectors.scan_recycle_bin),
 ]
@@ -86,9 +87,12 @@ class ScanJob:
         if not findings:
             return
 
+        # Unrecognised AppData folders get their own, more focused model call.
+        mystery = [f for f in findings if f.kind == "unrecognized"]
+        regular = [f for f in findings if f.kind != "unrecognized"]
         t0 = time.time()
         try:
-            result = llm.analyze(findings, self.paths, self.drives_fn())
+            result = llm.analyze(regular, self.paths, self.drives_fn()) if regular else {}
             ai = {"status": "done", **result, "seconds": round(time.time() - t0, 1)}
         except llm.LLMError as exc:
             ai = {"status": "error", "error": str(exc)}
@@ -97,6 +101,21 @@ class ScanJob:
             ai = {"status": "error", "error": f"Unexpected error: {exc}"}
         with self.lock:
             self.ai.update(ai)
+            self.ai["identify"] = "running" if mystery and ai["status"] == "done" else ""
+            self.version += 1
+
+        if self.ai["identify"]:
+            try:
+                llm.identify_folders(mystery[0], self.paths)
+                status = "done"
+            except Exception as exc:  # the main review already succeeded; don't throw it away
+                traceback.print_exc()
+                status = "error"
+            with self.lock:
+                self.ai["identify"] = status
+                self.version += 1
+
+        with self.lock:
             self.phase = "done"
             self.version += 1
 
@@ -107,8 +126,7 @@ class ScanJob:
             data = [f.to_dict(self.paths, now) for f in self.findings]
             totals = {v: 0 for v in VERDICT_ORDER}
             for f in data:
-                if f["action"] in CLEANABLE_ACTIONS:
-                    totals[f["verdict"]] += f["size"]
+                totals[f["verdict"]] += f["cleanable_size"]
             return {
                 "phase": self.phase,
                 "step": self.step,

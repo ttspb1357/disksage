@@ -249,6 +249,8 @@ main { max-width: 1080px; margin: 0 auto; padding: 20px; }
 .item-path { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
 .item-note { font-size: 12.5px; color: var(--muted); }
 .item-note .ai-note { color: var(--accent); }
+.item-note .ai-note .pill { vertical-align: 1px; }
+.item-note .blocked-note { color: var(--keep); }
 .item-size { font-size: 13px; font-weight: 600; flex: none; }
 .more { font-size: 13px; color: var(--muted); padding: 4px 8px; }
 

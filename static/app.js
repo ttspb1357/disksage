@@ -11,6 +11,7 @@ const CATEGORIES = {
   dev: "Developer leftovers",
   ai: "AI models",
   system: "Windows & drivers",
+  appdata: "Unrecognised app data",
   large: "Large files",
   bin: "Recycle Bin",
 };
@@ -241,12 +242,18 @@ function renderAI(s) {
   }
 }
 
+const selectable = (f, item) => CLEANABLE.has(f.action) && !item.removed && !item.blocked;
+
 function itemRow(f, item, sel) {
-  const cleanable = CLEANABLE.has(f.action);
   const age = item.age_days != null ? ` · ${item.age_days} days old` : "";
-  const notes = [item.note && esc(item.note), item.ai_note && `<span class="ai-note">AI: ${esc(item.ai_note)}</span>`].filter(Boolean).join(" · ");
+  const aiPill = item.ai_verdict ? `<span class="pill ${item.ai_verdict}">AI: ${item.ai_verdict}</span> ` : "";
+  const notes = [
+    item.note && esc(item.note),
+    item.ai_note && `<span class="ai-note">${aiPill}${aiPill ? "" : "AI: "}${esc(item.ai_note)}</span>`,
+    item.blocked && `<span class="blocked-note">⛔ ${esc(item.blocked)}</span>`,
+  ].filter(Boolean).join(" · ");
   return `<li class="${item.removed ? "removed" : ""}">
-    ${cleanable && !item.removed ? `<input type="checkbox" class="item-check" data-idx="${item.index}" ${sel.has(item.index) ? "checked" : ""} aria-label="Select">` : '<span class="check-spacer"></span>'}
+    ${selectable(f, item) ? `<input type="checkbox" class="item-check" data-idx="${item.index}" ${sel.has(item.index) ? "checked" : ""} aria-label="Select">` : '<span class="check-spacer"></span>'}
     <div class="item-main">
       <div class="item-path">${esc(item.path)}</div>
       ${notes || age ? `<div class="item-note">${notes}${notes ? "" : age.slice(3)}</div>` : ""}
@@ -258,8 +265,8 @@ function itemRow(f, item, sel) {
 function findingCard(f) {
   const sel = scan.selection.get(f.id) || new Set();
   const live = f.items.filter((i) => !i.removed);
-  const cleanable = CLEANABLE.has(f.action) && live.length > 0;
-  const aiPending = scan.data.ai.status === "running";
+  const cleanable = f.items.some((i) => selectable(f, i));
+  const aiPending = scan.data.ai.status === "running" || (f.kind === "unrecognized" && scan.data.ai.identify === "running");
   const open = scan.open.has(f.id);
   const reason = f.ai_reason || f.detail;
   const tags = [];
@@ -296,7 +303,7 @@ function renderGroups() {
   $("#groups").innerHTML = GROUPS.map(([verdict, title, blurb]) => {
     const list = findings.filter((f) => f.verdict === verdict);
     if (!list.length) return "";
-    const size = list.filter((f) => CLEANABLE.has(f.action)).reduce((sum, f) => sum + f.size, 0);
+    const size = list.reduce((sum, f) => sum + f.cleanable_size, 0);
     return `<section class="group group-${verdict}">
       <div class="group-head"><h2>${title}</h2>${size ? `<span class="group-size">${fmtSize(size)}</span>` : ""}<p>${blurb}</p></div>
       ${list.map(findingCard).join("")}
@@ -311,7 +318,7 @@ function syncCheckboxes() {
     const box = $(".finding-check", card);
     if (!f || !box) continue;
     const sel = scan.selection.get(f.id) || new Set();
-    const live = f.items.filter((i) => !i.removed);
+    const live = f.items.filter((i) => selectable(f, i));
     const count = live.filter((i) => sel.has(i.index)).length;
     box.checked = count > 0 && count === live.length;
     box.indeterminate = count > 0 && count < live.length;
@@ -325,7 +332,7 @@ function selectAll(f, on) {
   const all = new Set();
   for (let i = 0; i < f.total_items; i++) {
     const item = f.items[i];
-    if (!item || !item.removed) all.add(i);
+    if (!item || selectable(f, item)) all.add(i);
   }
   scan.selection.set(f.id, all);
 }
@@ -395,7 +402,7 @@ function updateActionBar() {
 
 $("#selectSafeBtn").addEventListener("click", () => {
   for (const f of scan.data?.findings || []) {
-    if (f.verdict === "safe" && CLEANABLE.has(f.action) && f.count) selectAll(f, true);
+    if (f.verdict === "safe" && f.cleanable_size) selectAll(f, true);
   }
   syncCheckboxes();
   updateActionBar();

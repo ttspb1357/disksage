@@ -8,16 +8,34 @@ import os
 import re
 import shutil
 import stat
+import sys
 import time
 
 from send2trash import send2trash
 
 from . import llm, winapi
-from .fsutil import MB, dir_stats, is_link_dir, is_link_path
+from .fsutil import MB, dir_stats, human, is_link_dir, is_link_path
 
 
 class Refused(Exception):
     pass
+
+
+def recycle_problem(path, size):
+    """Why this can't safely go to the Recycle Bin (Windows would delete it for good), or None."""
+    enabled, limit = winapi.recycle_bin_limit(path)
+    if not enabled:
+        return ("Your Recycle Bin is switched off for this drive, so Windows would delete this permanently. "
+                "DiskSage won't — switch the Recycle Bin back on in its Properties, or delete it yourself if you're sure.")
+    if limit is None:  # no setting recorded yet: assume Windows' default of about 5% of the drive
+        try:
+            limit = shutil.disk_usage(os.path.splitdrive(os.path.abspath(path))[0] + "\\").total // 20
+        except OSError:
+            return None
+    if size > limit:
+        return (f"It's bigger ({human(size)}) than your Recycle Bin can hold ({human(limit)}), so Windows would "
+                "delete it permanently. DiskSage won't — delete it yourself (Shift+Delete) if you're sure.")
+    return None
 
 
 class Report:
@@ -65,7 +83,10 @@ def _remove(path):
             failures.append(target)
 
     if os.path.isdir(path) and not is_link_path(path):
-        shutil.rmtree(path, onexc=onexc)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=onexc)
+        else:
+            shutil.rmtree(path, onerror=lambda func, target, info: onexc(func, target, info[1]))
     else:
         try:
             os.remove(path)
@@ -122,6 +143,9 @@ def apply(action, item, paths, report):
     try:
         if action == "recycle":
             _check(item.path, paths)
+            problem = recycle_problem(item.path, max(item.size, _size_of(item.path)))
+            if problem:
+                raise Refused(problem)
             send2trash(item.path)
             report.recycled += item.size
             item.removed = True

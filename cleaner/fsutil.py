@@ -49,6 +49,15 @@ def is_link_path(path):
         return False
 
 
+def subdirs(root):
+    """Real (non-link) subfolders of root as DirEntry objects."""
+    try:
+        with os.scandir(root) as it:
+            return [e for e in it if e.is_dir(follow_symlinks=False) and not is_link_dir(e)]
+    except OSError:
+        return []
+
+
 def is_cloud_only(st):
     return bool(getattr(st, "st_file_attributes", 0) & CLOUD_ONLY_ATTRS)
 

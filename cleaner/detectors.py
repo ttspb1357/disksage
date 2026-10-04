@@ -12,8 +12,8 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
-from . import installed, winapi
-from .fsutil import DAY, MB, Budget, dir_stats, is_cloud_only, is_link_dir, list_files
+from . import actions, installed, winapi
+from .fsutil import DAY, MB, Budget, dir_stats, is_cloud_only, is_link_dir, list_files, subdirs
 from .models import Finding, Item
 from .paths import inside, norm
 
@@ -52,6 +52,11 @@ class Context:
             items = [i for i in items if i.size > 0]
         if not items:
             return None
+        if action == "recycle":
+            for item in items:
+                problem = actions.recycle_problem(item.path, item.size)
+                if problem:
+                    item.meta["blocked"] = problem
         finding = Finding(
             id=f"{kind}-{len(self.findings) + 1}", category=category, kind=kind, title=title,
             detail=detail, verdict=verdict, action=action, items=items, needs_item_notes=needs_item_notes,
@@ -902,6 +907,74 @@ def scan_system(ctx):
         "Hidden system files Windows needs for hibernation and virtual memory. They can't be deleted by "
         "hand while Windows is running — the notes below say how to shrink them properly.",
         "keep", "none", _by_size(memory_items),
+    )
+
+
+# Top-level AppData folders that belong to Windows, browsers, drivers or tools
+# DiskSage already handles elsewhere — never "mystery" folders.
+APPDATA_SKIP = {
+    "microsoft", "packages", "programs", "temp", "comms", "connecteddevicesplatform", "d3dscache",
+    "crashdumps", "elevateddiagnostics", "peerdistrepub", "placeholdertilelogofolder", "publishers",
+    "virtualstore", "application data", "history", "temporary internet files", "microsoft help",
+    "google", "mozilla", "bravesoftware", "opera software", "vivaldi", "nvidia", "nvidia corporation",
+    "amd", "intel", "pip", "npm-cache", "npm", "yarn", "uv", "go-build", "nuget", "composer",
+    "node-gyp", "electron", "ms-playwright", "pnpm", "squirreltemp", "ollama", "docker", "sun",
+    "python", "jupyter", "ipython", "conda", "github", "git", "windowsapps",
+    "package cache",  # installers Windows needs to uninstall or repair apps
+}
+
+
+def _peek(path, limit=8):
+    """Names of a few things inside a folder — clues for identifying it."""
+    try:
+        with os.scandir(path) as it:
+            entries = sorted(it, key=lambda e: (not e.is_dir(follow_symlinks=False), e.name.lower()))
+    except OSError:
+        return []
+    return [e.name + ("/" if e.is_dir(follow_symlinks=False) else "") for e in entries[:limit]]
+
+
+def scan_unrecognized_appdata(ctx, min_size=50 * MB, limit=20):
+    """Big AppData folders that no installed app matches — often leftovers from apps removed long
+    ago. Rules can't tell what they are; the local model identifies each one (see llm.identify_folders)."""
+    p = ctx.paths
+    known = [installed.tokens(a["name"]) for a in ctx.apps]
+    known += [installed.tokens(a["publisher"]) for a in ctx.apps if a.get("publisher")]
+    known = [w for w in known if w]
+    locations = {norm(a["install_location"]) for a in ctx.apps if a.get("install_location")}
+
+    candidates = []
+    for base in (p.local, p.roaming, p.locallow):
+        for entry in subdirs(base):
+            low = entry.name.lower()
+            if low in APPDATA_SKIP or low.startswith((".", "{", "$")) or norm(entry.path) in locations:
+                continue
+            words = installed.tokens(entry.name)
+            if not words or any(installed.score(words, w) >= 0.75 for w in known):
+                continue  # belongs to something installed
+            prefix = norm(entry.path) + "\\"
+            if any(c.startswith(prefix) for c in ctx.covered):
+                continue  # already offered as a cache — don't count it twice
+            candidates.append(entry.path)
+
+    budget = Budget(40)
+    items = []
+    for path in candidates:
+        if budget.expired:
+            break
+        size, files, newest, _ = dir_stats(path, budget)
+        if size < min_size:
+            continue
+        days = ctx.age(newest)
+        note = f"No installed app matches it · {files:,} files · last changed {days} days ago"
+        if days < 30:
+            note += " — something may still be using it"
+        items.append(Item(path, size, newest, note=note, meta={"peek": _peek(path), "files": files}))
+    ctx.add(
+        "appdata", "unrecognized", "AppData folders from apps you may not have anymore",
+        "Big folders in AppData that don't match any app installed on this PC — often left behind by apps "
+        "you removed long ago. Rules can't tell what they are, so the local AI identifies each one.",
+        "review", "recycle", _by_size(items)[:limit],
     )
 
 

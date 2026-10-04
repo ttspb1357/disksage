@@ -6,7 +6,7 @@ import os
 import re
 import winreg
 
-from .fsutil import Budget, dir_stats, is_link_dir
+from .fsutil import Budget, dir_stats, subdirs
 from .models import Item
 from .paths import norm
 
@@ -174,14 +174,6 @@ def match_installer(stem, info, apps, token_cache):
 
 # --- Leftovers ------------------------------------------------------------------
 
-def _subdirs(root):
-    try:
-        with os.scandir(root) as it:
-            return [e for e in it if e.is_dir(follow_symlinks=False) and not is_link_dir(e)]
-    except OSError:
-        return []
-
-
 # Folders some popular apps keep under names that don't match the app's name.
 KNOWN_EXTRA_FOLDERS = {
     "visual studio code": ["{home}\\.vscode"],
@@ -227,16 +219,16 @@ def find_leftovers(app, paths, apps, budget_s=20):
         paths.locallow, paths.programdata, *paths.program_files,
     ]
     for root in roots:
-        for entry in _subdirs(root):
+        for entry in subdirs(root):
             if belongs(entry.name):
                 consider(entry.path)
             elif pub_words and score(tokens(entry.name), pub_words) >= 0.8:
                 # Publisher folder (e.g. AppData\Roaming\Mozilla) — look one level in,
                 # but never offer the whole publisher folder.
-                for child in _subdirs(entry.path):
+                for child in subdirs(entry.path):
                     if belongs(child.name):
                         consider(child.path)
-    for entry in _subdirs(paths.home):
+    for entry in subdirs(paths.home):
         if entry.name.startswith(".") and belongs(entry.name):
             consider(entry.path)  # e.g. ~\.vscode
     base = {"home": paths.home, "local": paths.local, "roaming": paths.roaming}
