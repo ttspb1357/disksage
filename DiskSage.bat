@@ -20,7 +20,7 @@ where ollama >nul 2>&1
 if errorlevel 1 (
   echo Note: Ollama isn't installed, so there won't be AI explanations.
   echo Scanning and cleaning still work. For the AI, install Ollama from https://ollama.com
-  echo and then run:  ollama pull deepseek-r1:8b
+  echo and then run:  ollama pull gemma4:e4b
   echo.
 )
 

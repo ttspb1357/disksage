@@ -248,7 +248,7 @@ function itemRow(f, item, sel) {
   const age = item.age_days != null ? ` · ${item.age_days} days old` : "";
   const aiPill = item.ai_verdict ? `<span class="pill ${item.ai_verdict}">AI: ${item.ai_verdict}</span> ` : "";
   const notes = [
-    item.note && esc(item.note),
+    item.note && `<span class="scan-note">${esc(item.note)}</span>`,
     item.ai_note && `<span class="ai-note">${aiPill}${aiPill ? "" : "AI: "}${esc(item.ai_note)}</span>`,
     item.blocked && `<span class="blocked-note">⛔ ${esc(item.blocked)}</span>`,
   ].filter(Boolean).join(" · ");
@@ -570,7 +570,7 @@ function renderAppDetail() {
       ? `<ul class="items">${cur.leftovers.map((l) => {
           const ai = folders[l.index];
           const note = [
-            l.protected ? `🔒 ${esc(l.protected)} — the uninstaller takes care of it` : esc(l.note),
+            l.protected ? `🔒 ${esc(l.protected)} — the uninstaller takes care of it` : `<span class="scan-note">${esc(l.note)}</span>`,
             ai ? `<span class="ai-note"><span class="pill ${ai.verdict}">${ai.verdict}</span> ${esc(ai.reason)}</span>` : "",
           ].filter(Boolean).join(" · ");
           const canPick = !l.removed && !l.protected;

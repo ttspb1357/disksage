@@ -34,7 +34,7 @@ There are two more tabs:
 - **It's free to run as often as you like.** A scan summary is thousands of tokens, so a paid API would charge for every rescan. Locally it costs nothing, so you can check every week.
 - **It works offline.** Nothing needs the internet once the model is pulled.
 - **The model is swappable.** It's one environment variable (`DISKSAGE_MODEL`). Try any model Ollama has.
-- **The trade-off, honestly:** an 8B model knows less than a frontier model and sometimes guesses wrong. So DiskSage never lets the model decide alone. The scanner's own rules come first, and **the model can only make a verdict more cautious, never less.** Exact facts (installed versions, sizes, vendor folder names) are measured and handed to it, so it doesn't have to guess.
+- **The trade-off, honestly:** a small model that fits on a laptop GPU knows less than a frontier model and sometimes guesses wrong. So DiskSage never lets the model decide alone. The scanner's own rules come first, and **the model can only make a verdict more cautious, never less.** Exact facts (installed versions, sizes, vendor folder names) are measured and handed to it, so it doesn't have to guess.
 
 ## Safety design
 
@@ -55,14 +55,14 @@ Tested with 18 safety checks on a throwaway folder (including a junction trap po
 You need Windows 10/11, Python 3.10+, and [Ollama](https://ollama.com).
 
 ```bash
-ollama pull deepseek-r1:8b
+ollama pull gemma4:e4b
 pip install -r requirements.txt
 python app.py            # opens http://127.0.0.1:8765
 ```
 
 Or just double-click **`DiskSage.bat`**. It checks for Python and Ollama, installs what's needed, and opens the page. Double-clicking it again just reopens DiskSage. Without Ollama, scanning and cleaning still work; you just don't get the AI explanations.
 
-To use a different model: `set DISKSAGE_MODEL=qwen3:8b` before starting (any Ollama model that supports structured output).
+To use a different model: `set DISKSAGE_MODEL=deepseek-r1:8b` before starting (any Ollama model that supports structured output works).
 
 ## How it's built
 

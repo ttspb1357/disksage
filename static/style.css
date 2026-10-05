@@ -385,7 +385,8 @@ dialog h3 { font-size: 19px; margin-bottom: 12px; }
 
 footer { text-align: center; color: var(--muted); font-size: 13px; padding: 12px 20px 24px; line-height: 2; }
 .linklike { font: inherit; background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
-body.privacy .item-path, body.privacy .item-note { filter: blur(5px); }
+/* Blur paths and file-based notes for screenshots, but keep the AI's explanations readable. */
+body.privacy .item-path, body.privacy .scan-note, body.privacy .blocked-note { filter: blur(5px); }
 
 @media (max-width: 760px) {
   .apps-layout { grid-template-columns: 1fr; }
